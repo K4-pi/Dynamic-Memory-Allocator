@@ -6,6 +6,8 @@
 
 #include "memory_alloc.h"
 
+#define PAGE_SIZE 4096 
+
 static void *get_block(size_t size);
 static void *add_block(size_t size);
 
@@ -38,7 +40,7 @@ static void *add_block(size_t size) {
 
 	if ((size_t)(heap_end - (void *)last_block) < size) {
 		printf("Not enough memory on page!\n");
-		return NULL;
+		return (void *)-1;
 	}
 
 	Block *new_block = (Block *)((char *)(last_block + 1) + last_block->size);
@@ -55,9 +57,8 @@ static void *add_block(size_t size) {
 
 void *allocate(size_t size) {
 
-	// First use of allocate
 	if (heap_start == NULL) {
-		heap_start = sbrk(4096);
+		heap_start = sbrk(PAGE_SIZE);
 		heap_end = sbrk(0);
 
 		if (heap_start == (void *)-1) {
@@ -77,7 +78,7 @@ void *allocate(size_t size) {
 
 	Block *block = get_block(size);
 
-	if (block == (void *)-1) return NULL;
+	if (block == (void *)-1) return (void *)-1;
 	
 	block->size = size;
 	block->is_free = false;
