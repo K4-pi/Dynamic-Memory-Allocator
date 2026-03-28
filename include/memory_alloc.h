@@ -13,6 +13,7 @@
  */
 void *allocate(size_t size);
 
+void print_blocks();
 void heap_info();
 
 #endif
