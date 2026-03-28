@@ -1,4 +1,4 @@
 malloc
-malloc_gdb
+malloc_debug
 test.c
 *.json

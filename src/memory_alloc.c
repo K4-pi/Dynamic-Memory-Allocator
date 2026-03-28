@@ -6,6 +6,12 @@
 
 #include "memory_alloc.h"
 
+#ifdef DEBUG
+	#define DEBUG_LOG(fmt, ...) printf("[DEBUG] " fmt, ##__VA_ARGS__)
+#else 
+	#define DEBUG_LOG(fmt, ...) ((void)0)
+#endif
+
 #define PAGE_SIZE 4096 
 
 static void *get_block(size_t size);
@@ -47,7 +53,7 @@ static void *get_block(size_t size) {
 static void *add_block(size_t size) {
 
 	if ((size_t)(heap_end - ((void *)(LAST_BLOCK + 1))) < size + sizeof(Block)) {
-		printf("Not enough memory on page!\n");
+		DEBUG_LOG("Not enough memory on page!\n");
 		return (void *)-1;
 	}
 
@@ -75,6 +81,13 @@ static void *add_block(size_t size) {
 
 	current->next = new_block;
 	return new_block;
+}
+
+void free_memory(void *buffer) {
+	Block *tmp = (((Block *)buffer) - 1);
+	tmp->is_free = true;
+
+	DEBUG_LOG("Freed memory at %p\n", tmp);
 }
 
 void *allocate(size_t size) {
