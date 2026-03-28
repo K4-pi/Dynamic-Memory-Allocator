@@ -1,5 +1,4 @@
 malloc
 malloc_gdb
 test.c
-Makefile
 *.json
