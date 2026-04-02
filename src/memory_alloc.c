@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "memory_alloc.h"
 
@@ -23,6 +24,8 @@ typedef struct Block {
 static void *get_block(size_t size);
 static void *add_block(size_t size);
 static Block *merge_blocks(Block *addr);
+
+static pthread_mutex_t heap_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *heap_start = NULL;
 void *heap_end = NULL;
@@ -98,7 +101,7 @@ static void *add_block(size_t size) {
 
 void *allocate(size_t size) {
 
-  // TODO: Implement simple LOCK
+  pthread_mutex_lock(&heap_lock);
 
   if (heap_start == NULL) {
     heap_start = sbrk(PAGE_SIZE);
@@ -108,6 +111,8 @@ void *allocate(size_t size) {
     if (heap_start == (void *)-1) {
       perror("sbrk error");
       heap_start = NULL;
+      pthread_mutex_unlock(&heap_lock);
+     
       return (void *)-1;
     }
 
@@ -121,13 +126,20 @@ void *allocate(size_t size) {
     first_block->is_free = false;
     first_block->previous = first_block;
     first_block->next = first_block;
-
+    
+    pthread_mutex_unlock(&heap_lock);
+    
     return (void *)(first_block + 1);
   }
 
   Block *block = get_block(size);
 
-  if (block == (void *)-1) return (void *)-1;
+  if (block == (void *)-1) {
+    pthread_mutex_unlock(&heap_lock);
+    return (void *)-1;
+  } 
+
+  pthread_mutex_unlock(&heap_lock);
 
   return (void *)(block + 1);
 }
@@ -142,13 +154,16 @@ void *allocate(size_t size) {
  */
 void free_memory(void *addr) {
 
+  pthread_mutex_lock(&heap_lock);
+  
   if (!addr) return;
 
   Block *block_to_free = GET_BLOCK_AT_ADDRESS(addr); // Moves to the header of a allocated data 
-  
   block_to_free->is_free = true;
   
   merge_blocks(block_to_free);
+
+  pthread_mutex_unlock(&heap_lock);
 }
 
 /**
