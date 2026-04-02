@@ -30,6 +30,17 @@ void *heap_end = NULL;
 #define FIRST_BLOCK ((Block *)((HEAP_HEADER *)heap_start + 1)) // first block after header
 #define LAST_BLOCK (((Block *)FIRST_BLOCK)->previous)
 
+#define GET_BLOCK_AT_ADDRESS(addr) (((Block *)addr) - 1)
+
+/**
+ * @brief Iterates through all allocated blocks and finds smallest 
+ *   	  possible block to allocate memory, if there is no free 
+ *   	  calls function to create new block
+ *
+ * @param size_t size -> size of the block needed to allocate 
+ *
+ * @return (void *) returns address to block
+ */
 static void *get_block(size_t size) {
   Block *current = FIRST_BLOCK;
 
@@ -44,6 +55,15 @@ static void *get_block(size_t size) {
   return add_block(size);
 }
 
+/**
+ * @brief Takes the first free address after the last block, 
+ *        checks if there is enough memory left on page (if not moves heap break point to fit in new page),
+ *        creates new block and returns the address of a newly allocated block
+ *
+ * @param size_t size -> size of the block needed to allocate 
+ *
+ * @return (void *) returns address of block
+ */
 static void *add_block(size_t size) {
   Block *last = LAST_BLOCK;
 
@@ -70,12 +90,6 @@ static void *add_block(size_t size) {
 
   last->next = new_block;
   return new_block;
-}
-
-void free_memory(void *buffer) {
-
-  if (!buffer) return;
-  (((Block *)buffer) - 1)->is_free = true;
 }
 
 void *allocate(size_t size) {
@@ -113,6 +127,26 @@ void *allocate(size_t size) {
     return (void *)-1;
 
   return (void *)(block + 1);
+}
+
+void free_memory(void *addr) {
+
+  if (!addr) return;
+
+  Block *block_to_free = GET_BLOCK_AT_ADDRESS(addr);
+
+  block_to_free->is_free = true;
+}
+
+/* 
+ * =================================
+ * +     TEMPORARY FOR DEBUGE      +
+ * =================================
+ */
+void is_free(void *addr) {
+
+  if (GET_BLOCK_AT_ADDRESS(addr)->is_free) printf("IS FREE\n");
+  else printf("NOT FREE\n");
 }
 
 void print_blocks() {

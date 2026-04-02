@@ -25,5 +25,6 @@ void free_memory(void *buffer);
 
 void print_blocks();
 void heap_info();
+void is_free(void *addr);
 
 #endif
