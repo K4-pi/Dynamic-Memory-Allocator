@@ -38,8 +38,8 @@ void *heap_end = NULL;
 
 /**
  * @brief Iterates through all allocated blocks and finds smallest 
- *   	  possible block to allocate memory, if there is no free 
- *   	  calls function to create new block
+ *    	  possible block to allocate memory, if there is no free 
+ *     	  calls function to create new block
  *
  * @param size_t size -> size of the block needed to allocate 
  *
@@ -144,14 +144,6 @@ void *allocate(size_t size) {
   return (void *)(block + 1);
 }
 
-/**
- * @brief Checks if given address is correct, sets block free status to true,
- *        and merges togheter with neighbor blocks if they free status is true 
- *
- * @param (void *) address of allocated memory 
- *
- * @return void
- */
 void free_memory(void *addr) {
 
   pthread_mutex_lock(&heap_lock);
