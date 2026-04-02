@@ -44,16 +44,19 @@ void *heap_end = NULL;
  */
 static void *get_block(size_t size) {
   Block *current = FIRST_BLOCK;
+  Block *best = NULL;
 
   for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
 
-    if (current->is_free && current->size >= size)
-      return current;
+    // TODO: slice to smaller blocks if possible
+    if (current->is_free && current->size >= size) 
+      if (!best || current->size < best->size)
+        best = current; 
 
     current = current->next;
   }
 
-  return add_block(size);
+  return best ? best : add_block(size);
 }
 
 /**
