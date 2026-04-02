@@ -16,9 +16,9 @@ typedef struct {
   size_t pages_count;
 } HEAP_HEADER;
 
-typedef struct {
-  void *previous;
-  void *next;
+typedef struct Block {
+  struct Block *previous;
+  struct Block *next;
   size_t size;
   _Bool is_free;
 } Block;
@@ -28,7 +28,7 @@ void *heap_end = NULL;
 
 #define GET_HEAP_HEADER ((HEAP_HEADER *)heap_start)
 #define FIRST_BLOCK ((Block *)((HEAP_HEADER *)heap_start + 1)) // first block after header
-#define LAST_BLOCK (((Block *)FIRST_BLOCK)->previous)
+#define LAST_BLOCK (FIRST_BLOCK->previous)
 
 #define GET_BLOCK_AT_ADDRESS(addr) (((Block *)addr) - 1)
 
@@ -78,12 +78,12 @@ static void *add_block(size_t size) {
     heap_end = (char *)heap_end + PAGE_SIZE;
     GET_HEAP_HEADER->pages_count++;
   }
-  void *new_block = next_free;
+  Block *new_block = (Block *)next_free;
 
-  ((Block *)new_block)->size = size;
-  ((Block *)new_block)->is_free = false;
-  ((Block *)new_block)->previous = last;
-  ((Block *)new_block)->next = FIRST_BLOCK;
+  new_block->size = size;
+  new_block->is_free = false;
+  new_block->previous = last;
+  new_block->next = FIRST_BLOCK;
 
   GET_HEAP_HEADER->blocks_count++;
   FIRST_BLOCK->previous = new_block;
