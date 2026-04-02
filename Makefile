@@ -7,6 +7,6 @@ INCLUDE := -Iinclude
 all: compile 
 
 compile:
-	$(CC) $(CFLAGS) -o malloc test.c $(SRC) $(INCLUDE)
+	$(CC) $(CFLAGS) -o malloc test.c -ggdb $(SRC) $(INCLUDE)
 
 
