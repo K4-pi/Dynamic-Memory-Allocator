@@ -1,144 +1,136 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <stdbool.h>
 
 #include "memory_alloc.h"
 
-#ifdef DEBUG
-	#define DEBUG_LOG(fmt, ...) dprintf(2, "[DEBUG] " fmt, ##__VA_ARGS__)
-#else 
-	#define DEBUG_LOG(fmt, ...) ((void)0)
-#endif
-
-#define PAGE_SIZE 4096 
+#define PAGE_SIZE 4096
 
 static void *get_block(size_t size);
 static void *add_block(size_t size);
 
 typedef struct {
-	size_t blocks_count;
-	size_t pages_count;
+  size_t blocks_count;
+  size_t pages_count;
 } HEAP_HEADER;
 
 typedef struct {
-	void *previous;
-	void *next;
-	size_t size;
-	_Bool is_free;
-} Block; 
+  void *previous;
+  void *next;
+  size_t size;
+  _Bool is_free;
+} Block;
 
 void *heap_start = NULL;
-void *heap_end   = NULL;
+void *heap_end = NULL;
 
 #define GET_HEAP_HEADER ((HEAP_HEADER *)heap_start)
 #define FIRST_BLOCK ((Block *)((HEAP_HEADER *)heap_start + 1)) // first block after header
-#define LAST_BLOCK (((Block *)FIRST_BLOCK)->previous) 
+#define LAST_BLOCK (((Block *)FIRST_BLOCK)->previous)
 
 static void *get_block(size_t size) {
-	Block *current = FIRST_BLOCK;
+  Block *current = FIRST_BLOCK;
 
-	for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
-	
-		if (current->is_free && current->size >= size)
-			return current;
+  for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
 
-		current = current->next; 
-	}
+    if (current->is_free && current->size >= size)
+      return current;
 
-	return add_block(size);
+    current = current->next;
+  }
+
+  return add_block(size);
 }
 
 static void *add_block(size_t size) {
-	Block *last = LAST_BLOCK;
+  Block *last = LAST_BLOCK;
 
-	void *next_free = (char *)(last + 1) + last->size;
+  void *next_free = (char *)(last + 1) + last->size;
 
-	if ((size_t)(heap_end - next_free) < size + sizeof(Block)) {
-		DEBUG_LOG("Not enough memory on page!\nAdding page...\n");
+  if ((size_t)(heap_end - next_free) < size + sizeof(Block)) {
+    if (sbrk(PAGE_SIZE) == (void *)-1) {
+      perror("Add page error");
+      return (void *)-1;
+    }
 
-		if (sbrk(PAGE_SIZE) == (void *)-1) {
-			perror("Add page error");
-			return (void *)-1;
-		}		
-		
-		DEBUG_LOG("Heap end before = %p\n", heap_end);
-		heap_end = (char *)heap_end + PAGE_SIZE;
-		GET_HEAP_HEADER->pages_count++;
-		DEBUG_LOG("Heap end after = %p\n", heap_end);
-	}
-	void *new_block = next_free; 
+    heap_end = (char *)heap_end + PAGE_SIZE;
+    GET_HEAP_HEADER->pages_count++;
+  }
+  void *new_block = next_free;
 
-    ((Block *)new_block)->size     = size;
-    ((Block *)new_block)->is_free  = false;
-    ((Block *)new_block)->previous = last;
-    ((Block *)new_block)->next     = FIRST_BLOCK;
+  ((Block *)new_block)->size = size;
+  ((Block *)new_block)->is_free = false;
+  ((Block *)new_block)->previous = last;
+  ((Block *)new_block)->next = FIRST_BLOCK;
 
-    GET_HEAP_HEADER->blocks_count++;
-    FIRST_BLOCK->previous = new_block;  
+  GET_HEAP_HEADER->blocks_count++;
+  FIRST_BLOCK->previous = new_block;
 
-    last->next = new_block;
-    return new_block;
+  last->next = new_block;
+  return new_block;
 }
 
 void free_memory(void *buffer) {
-	Block *tmp = (((Block *)buffer) - 1);
-	tmp->is_free = true;
 
-	DEBUG_LOG("Freed memory at %p\n", tmp);
+  if (!buffer) return;
+  (((Block *)buffer) - 1)->is_free = true;
 }
 
 void *allocate(size_t size) {
 
-	if (heap_start == NULL) {
-		heap_start = sbrk(PAGE_SIZE);
-		heap_end = ((char *)heap_start) + PAGE_SIZE;
-		GET_HEAP_HEADER->pages_count = 1;
+  // TODO: Implement simple LOCK
 
-		if (heap_start == (void *)-1) {
-			perror("sbrk error");
-			heap_start = NULL;
-			return (void *)-1;
-		}
-		
-		HEAP_HEADER* heap_header = heap_start;
-		heap_header->blocks_count = 1;
-		heap_header->pages_count = 1;
+  if (heap_start == NULL) {
+    heap_start = sbrk(PAGE_SIZE);
+    heap_end = ((char *)heap_start) + PAGE_SIZE;
+    GET_HEAP_HEADER->pages_count = 1;
 
-		Block *first_block = (Block *)(heap_header + 1);
+    if (heap_start == (void *)-1) {
+      perror("sbrk error");
+      heap_start = NULL;
+      return (void *)-1;
+    }
 
-		first_block->size = size;
-		first_block->is_free = false;
-		first_block->previous = first_block;
-		first_block->next = first_block;
+    HEAP_HEADER *heap_header = heap_start;
+    heap_header->blocks_count = 1;
+    heap_header->pages_count = 1;
 
-		return (void *)(first_block + 1);
-	}
+    Block *first_block = (Block *)(heap_header + 1);
 
-	Block *block = get_block(size);
+    first_block->size = size;
+    first_block->is_free = false;
+    first_block->previous = first_block;
+    first_block->next = first_block;
 
-	if (block == (void *)-1) return (void *)-1;
+    return (void *)(first_block + 1);
+  }
 
-	return (void *)(block + 1); 
+  Block *block = get_block(size);
+
+  if (block == (void *)-1)
+    return (void *)-1;
+
+  return (void *)(block + 1);
 }
 
 void print_blocks() {
-	Block *current = FIRST_BLOCK;
+  Block *current = FIRST_BLOCK;
 
-	for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
-		printf("| previous -> %p | current -> %p | next ->  %p |\n", current->previous, current, current->next);
-		current = (Block *)current->next;
-	}
+  for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
+    printf("| previous -> %p | current -> %p | next ->  %p |\n", current->previous, current, current->next);
+    current = (Block *)current->next;
+  }
 }
 
 void heap_info() {
-	printf("\nheader size = %lu\n\n", sizeof(Block));
-	printf("Heap start = %p\n", heap_start);
-	printf("Heap end   = %p\n", heap_end);
-	printf("Heap header size = %lu\n\n", sizeof(HEAP_HEADER));
-	printf("first block = %p\n", FIRST_BLOCK);
-	printf("last block = %p\n\n", LAST_BLOCK);
-	printf("Blocks count = %lu\n", GET_HEAP_HEADER->blocks_count);
-	printf("Pages count = %lu\n", GET_HEAP_HEADER->pages_count);
+  printf("\nheader size = %lu\n\n", sizeof(Block));
+  printf("Heap start = %p\n", heap_start);
+  printf("Heap end   = %p\n", heap_end);
+  printf("Heap header size = %lu\n\n", sizeof(HEAP_HEADER));
+  printf("first block = %p\n", FIRST_BLOCK);
+  printf("last block = %p\n\n", LAST_BLOCK);
+  printf("Blocks count = %lu\n", GET_HEAP_HEADER->blocks_count);
+  printf("Pages count = %lu\n", GET_HEAP_HEADER->pages_count);
 }
