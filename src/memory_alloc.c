@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <wchar.h>
 
 #include "memory_alloc.h"
 
@@ -24,6 +25,7 @@ typedef struct Block {
 static void *get_block(size_t size);
 static void *add_block(size_t size);
 static Block *merge_blocks(Block *addr);
+static void slice_block(Block *block, size_t size);
 
 static pthread_mutex_t heap_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -33,71 +35,8 @@ void *heap_end = NULL;
 #define GET_HEAP_HEADER ((HEAP_HEADER *)heap_start)
 #define FIRST_BLOCK ((Block *)((HEAP_HEADER *)heap_start + 1)) // first block after header
 #define LAST_BLOCK (FIRST_BLOCK->previous)
-
 #define GET_BLOCK_AT_ADDRESS(addr) (((Block *)addr) - 1)
 
-/**
- * @brief Iterates through all allocated blocks and finds smallest 
- *    	  possible block to allocate memory, if there is no free 
- *     	  calls function to create new block
- *
- * @param size_t size -> size of the block needed to allocate 
- *
- * @return (void *) returns address to block
- */
-static void *get_block(size_t size) {
-  Block *current = FIRST_BLOCK;
-  Block *best = NULL;
-
-  for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
-
-    // TODO: slice to smaller blocks if possible
-    if (current->is_free && current->size >= size) 
-      if (!best || current->size < best->size)
-        best = current; 
-
-    current = current->next;
-  }
-
-  return best ? best : add_block(size);
-}
-
-/**
- * @brief Takes the first free address after the last block, 
- *        checks if there is enough memory left on page (if not moves heap break point to fit in new page),
- *        creates new block and returns the address of a newly allocated block
- *
- * @param size_t size -> size of the block needed to allocate 
- *
- * @return (void *) returns address of block
- */
-static void *add_block(size_t size) {
-  Block *last = LAST_BLOCK;
-
-  void *next_free = (char *)(last + 1) + last->size;
-
-  if ((size_t)(heap_end - next_free) < size + sizeof(Block)) {
-    if (sbrk(PAGE_SIZE) == (void *)-1) {
-      perror("Add page error");
-      return (void *)-1;
-    }
-
-    heap_end = (char *)heap_end + PAGE_SIZE;
-    GET_HEAP_HEADER->pages_count++;
-  }
-  Block *new_block = (Block *)next_free;
-
-  new_block->size = size;
-  new_block->is_free = false;
-  new_block->previous = last;
-  new_block->next = FIRST_BLOCK;
-
-  GET_HEAP_HEADER->blocks_count++;
-  FIRST_BLOCK->previous = new_block;
-
-  last->next = new_block;
-  return new_block;
-}
 
 void *allocate(size_t size) {
 
@@ -144,14 +83,117 @@ void *allocate(size_t size) {
   return (void *)(block + 1);
 }
 
-void free_memory(void *addr) {
+/**
+ * @brief Iterates through all allocated blocks and finds smallest 
+ *    	  possible block to allocate memory, if there is no free 
+ *     	  calls function to create new block
+ *
+ * @param size_t size -> size of the block needed to allocate 
+ *
+ * @return (void *) returns address to block
+ */
+static void *get_block(size_t size) {
+  Block *current = FIRST_BLOCK;
+  Block *best = NULL;
+
+  for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
+
+    if (current->is_free && current->size >= size) {
+      if (!best || current->size < best->size) {
+        best = current; 
+      }
+    }
+
+    current = current->next;
+  }
+
+  if (!best) return add_block(size);
+  
+  slice_block(best, size);
+
+  best->size = size;        
+  best->is_free = false;
+                            
+  return best;              
+}
+
+/**
+ * @brief Takes the first free address after the last block, 
+ *        checks if there is enough memory left on page (if not moves heap break point to fit in new page),
+ *        creates new block and returns the address of a newly allocated block
+ *
+ * @param size_t size -> size of the block needed to allocate 
+ *
+ * @return (void *) returns address of block
+ */
+static void *add_block(size_t size) {
+  Block *last = LAST_BLOCK;
+
+  void *next_free = (char *)(last + 1) + last->size;
+
+  if ((size_t)(heap_end - next_free) < size + sizeof(Block)) {
+    if (sbrk(PAGE_SIZE) == (void *)-1) {
+      perror("Add page error");
+      return (void *)-1;
+    }
+
+    heap_end = (char *)heap_end + PAGE_SIZE;
+    GET_HEAP_HEADER->pages_count++;
+  }
+  Block *new_block = (Block *)next_free;
+
+  new_block->size = size;
+  new_block->is_free = false;
+  new_block->previous = last;
+  new_block->next = FIRST_BLOCK;
+
+  GET_HEAP_HEADER->blocks_count++;
+  FIRST_BLOCK->previous = new_block;
+
+  last->next = new_block;
+  return new_block;
+}
+
+/**
+ * @brief Takes given block and if there is at least sizeof(Block) + 1 bytes
+ *        too much it slices block into two and saves it in linked list
+ *
+ * @param Block  block -> address of a Block to slice
+ * @param size_t size  -> size of the block needed to allocate 
+ *
+ * @return void 
+ */
+static void slice_block(Block *block, size_t size) {
+
+  if (block->size == size) return;
+
+  // Slice block if there is enough memory for Block header size + at least one byte
+  if (block->size - size > sizeof(Block)) {
+   
+    Block *sliced_block = (Block *)(((char *)(block + 1)) + block->size);
+    
+    sliced_block->size = block->size - size - sizeof(Block) * 2;
+    sliced_block->is_free = true;
+
+    sliced_block->previous = block;
+    sliced_block->next = block->next;
+
+    block->next->previous = sliced_block;
+    block->next = sliced_block;
+
+    GET_HEAP_HEADER->blocks_count++;
+  }
+}
+
+
+void free_memory(void *addr) { //TODO: implement removing unused pages
+
+  if (!addr) return;
 
   pthread_mutex_lock(&heap_lock);
   
-  if (!addr) return;
-
   Block *block_to_free = GET_BLOCK_AT_ADDRESS(addr); // Moves to the header of a allocated data 
-  block_to_free->is_free = true;
+  block_to_free->is_free = true;  
   
   merge_blocks(block_to_free);
 
