@@ -15,17 +15,17 @@ typedef struct {
   size_t pages_count;
 } HEAP_HEADER;
 
-typedef struct Block {
-  struct Block *previous;
-  struct Block *next;
+typedef struct block_header_t {
+  struct block_header_t *previous;
+  struct block_header_t *next;
   size_t size;
   _Bool is_free;
-} Block;
+} block_header_t;
 
 static void *get_block(size_t size);
 static void *add_block(size_t size);
-static Block *merge_blocks(Block *addr);
-static void slice_block(Block *block, size_t size);
+static block_header_t *merge_blocks(block_header_t *addr);
+static void slice_block(block_header_t *block, size_t size);
 
 static pthread_mutex_t heap_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -33,9 +33,9 @@ void *heap_start = NULL;
 void *heap_end = NULL;
 
 #define GET_HEAP_HEADER ((HEAP_HEADER *)heap_start)
-#define FIRST_BLOCK ((Block *)((HEAP_HEADER *)heap_start + 1)) // first block after header
+#define FIRST_BLOCK ((block_header_t *)((HEAP_HEADER *)heap_start + 1)) // first block after header
 #define LAST_BLOCK (FIRST_BLOCK->previous)
-#define GET_BLOCK_AT_ADDRESS(addr) (((Block *)addr) - 1)
+#define GET_BLOCK_AT_ADDRESS(addr) (((block_header_t *)addr) - 1)
 
 
 void *allocate(size_t size) {
@@ -59,7 +59,7 @@ void *allocate(size_t size) {
     heap_header->blocks_count = 1;
     heap_header->pages_count = 1;
 
-    Block *first_block = (Block *)(heap_header + 1);
+    block_header_t *first_block = (block_header_t *)(heap_header + 1);
 
     first_block->size = size;
     first_block->is_free = false;
@@ -71,7 +71,7 @@ void *allocate(size_t size) {
     return (void *)(first_block + 1);
   }
 
-  Block *block = get_block(size);
+  block_header_t *block = get_block(size);
 
   if (block == (void *)-1) {
     pthread_mutex_unlock(&heap_lock);
@@ -93,8 +93,8 @@ void *allocate(size_t size) {
  * @return (void *) returns address to block
  */
 static void *get_block(size_t size) {
-  Block *current = FIRST_BLOCK;
-  Block *best = NULL;
+  block_header_t *current = FIRST_BLOCK;
+  block_header_t *best = NULL;
 
   for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
 
@@ -127,11 +127,11 @@ static void *get_block(size_t size) {
  * @return (void *) returns address of block
  */
 static void *add_block(size_t size) {
-  Block *last = LAST_BLOCK;
+  block_header_t *last = LAST_BLOCK;
 
   void *next_free = (char *)(last + 1) + last->size;
 
-  if ((size_t)(heap_end - next_free) < size + sizeof(Block)) {
+  if ((size_t)(heap_end - next_free) < size + sizeof(block_header_t)) {
     if (sbrk(PAGE_SIZE) == (void *)-1) {
       perror("Add page error");
       return (void *)-1;
@@ -140,7 +140,7 @@ static void *add_block(size_t size) {
     heap_end = (char *)heap_end + PAGE_SIZE;
     GET_HEAP_HEADER->pages_count++;
   }
-  Block *new_block = (Block *)next_free;
+  block_header_t *new_block = (block_header_t *)next_free;
 
   new_block->size = size;
   new_block->is_free = false;
@@ -155,24 +155,24 @@ static void *add_block(size_t size) {
 }
 
 /**
- * @brief Takes given block and if there is at least sizeof(Block) + 1 bytes
+ * @brief Takes given block and if there is at least sizeof(block_header_t) + 1 bytes
  *        too much it slices block into two and saves it in linked list
  *
- * @param Block  block -> address of a Block to slice
+ * @param block_header_t  block -> address of a block_header_t to slice
  * @param size_t size  -> size of the block needed to allocate 
  *
  * @return void 
  */
-static void slice_block(Block *block, size_t size) {
+static void slice_block(block_header_t *block, size_t size) {
 
   if (block->size == size) return;
 
-  // Slice block if there is enough memory for Block header size + at least one byte
-  if (block->size - size > sizeof(Block)) {
+  // Slice block if there is enough memory for block_header_t header size + at least one byte
+  if (block->size - size > sizeof(block_header_t)) { // TODO: because how slice works there is need to store block size but also content size 
    
-    Block *sliced_block = (Block *)(((char *)(block + 1)) + block->size);
+    block_header_t *sliced_block = (block_header_t *)(((char *)(block + 1)) + block->size);
     
-    sliced_block->size = block->size - size - sizeof(Block) * 2;
+    sliced_block->size = block->size - size - sizeof(block_header_t) * 2;
     sliced_block->is_free = true;
 
     sliced_block->previous = block;
@@ -186,13 +186,13 @@ static void slice_block(Block *block, size_t size) {
 }
 
 
-void free_memory(void *addr) { //TODO: implement removing unused pages
+void free_memory(void *addr) { // TODO: implement removing unused pages
 
   if (!addr) return;
 
   pthread_mutex_lock(&heap_lock);
   
-  Block *block_to_free = GET_BLOCK_AT_ADDRESS(addr); // Moves to the header of a allocated data 
+  block_header_t *block_to_free = GET_BLOCK_AT_ADDRESS(addr); // Moves to the header of a allocated data 
   block_to_free->is_free = true;  
   
   merge_blocks(block_to_free);
@@ -204,13 +204,13 @@ void free_memory(void *addr) { //TODO: implement removing unused pages
  * @brief Checks the free status of neighbor blocks and merges them togheter with 
  *        given block to one block 
  *
- * @param (Block *) header address of Block 
+ * @param (block_header_t *) header address of block_header_t 
  *
- * @return (Block *) address of merged Block 
+ * @return (block_header_t *) address of merged block_header_t 
  */
-static Block *merge_blocks(Block *block) {
+static block_header_t *merge_blocks(block_header_t *block) {
   
-  Block *merge_block = block;
+  block_header_t *merge_block = block;
 
   // Merge previous
   if (merge_block->previous->is_free && merge_block->previous != LAST_BLOCK) {
@@ -219,19 +219,19 @@ static Block *merge_blocks(Block *block) {
     block->next->previous = merge_block;
     merge_block->next = block->next;
 
-    merge_block->size += block->size + sizeof(Block);
+    merge_block->size += block->size + sizeof(block_header_t);
 
     GET_HEAP_HEADER->blocks_count--;
   }
 
   // Merge next
-  Block *next_block = merge_block->next;
+  block_header_t *next_block = merge_block->next;
 
   if (next_block->is_free && next_block != FIRST_BLOCK) {
     merge_block->next = next_block->next;
     next_block->next->previous = merge_block;
 
-    merge_block->size += next_block->size + sizeof(Block);
+    merge_block->size += next_block->size + sizeof(block_header_t);
     
     GET_HEAP_HEADER->blocks_count--;
   }
@@ -251,7 +251,7 @@ void is_free(void *addr) {
 }
 
 void print_blocks() {
-  Block *current = FIRST_BLOCK;
+  block_header_t *current = FIRST_BLOCK;
 
   for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
 
@@ -259,12 +259,12 @@ void print_blocks() {
     printf("| previous -> %p | current -> %p | next ->  %p | IS_FREE = %d  BLOCK SIZE = %lu\n", 
             current->previous, current, current->next, current->is_free, current->size);
     
-    current = (Block *)current->next;
+    current = (block_header_t *)current->next;
   }
 }
 
 void heap_info() {
-  printf("\nBlock header size = %lu\n\n", sizeof(Block));
+  printf("\nBlock header size = %lu\n\n", sizeof(block_header_t));
   printf("Heap start = %p\n", heap_start);
   printf("Heap end   = %p\n", heap_end);
   printf("Heap header size = %lu\n\n", sizeof(HEAP_HEADER));
