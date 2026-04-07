@@ -18,7 +18,9 @@ typedef struct {
 typedef struct block_header_t {
   struct block_header_t *previous;
   struct block_header_t *next;
-  size_t size;
+  struct content_header_t *content_addr;
+  size_t data_size; // data size specified by user
+  size_t size;      // Block on heap size
   _Bool is_free;
 } block_header_t;
 
@@ -77,6 +79,8 @@ void *allocate(size_t size) {
     pthread_mutex_unlock(&heap_lock);
     return (void *)-1;
   } 
+
+  block->data_size = size;
 
   pthread_mutex_unlock(&heap_lock);
 
@@ -168,7 +172,7 @@ static void slice_block(block_header_t *block, size_t size) {
   if (block->size == size) return;
 
   // Slice block if there is enough memory for block_header_t header size + at least one byte
-  if (block->size - size > sizeof(block_header_t)) { // TODO: because how slice works there is need to store block size but also content size 
+  if (block->size - size > sizeof(block_header_t)) {  
    
     block_header_t *sliced_block = (block_header_t *)(((char *)(block + 1)) + block->size);
     
@@ -185,6 +189,18 @@ static void slice_block(block_header_t *block, size_t size) {
   }
 }
 
+ssize_t size_memory(void *addr) {
+
+  if (!addr) return -1;
+
+  pthread_mutex_lock(&heap_lock);
+
+  block_header_t *block = GET_BLOCK_AT_ADDRESS(addr);
+
+  pthread_mutex_unlock(&heap_lock);
+
+  return block->data_size;
+}
 
 void free_memory(void *addr) { // TODO: implement removing unused pages
 
