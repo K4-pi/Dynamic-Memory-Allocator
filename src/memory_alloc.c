@@ -174,8 +174,10 @@ static void slice_block(block_header_t *block, size_t size) {
   // Slice block if there is enough memory for block_header_t header size + at least one byte
   if (block->size - size > sizeof(block_header_t)) {  
    
-    block_header_t *sliced_block = (block_header_t *)(((char *)(block + 1)) + block->size);
-    
+    block_header_t *sliced_block = (block_header_t *)(((char *)(block + 1)) + size);
+   
+		block->size = size;
+
     sliced_block->size = block->size - size - sizeof(block_header_t) * 2;
     sliced_block->is_free = true;
 
