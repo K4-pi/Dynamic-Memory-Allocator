@@ -11,6 +11,7 @@ The allocator manages a heap using `sbrk()` to request memory from the OS in pag
 - **Best-fit allocation** — finds the smallest free block that fits the request
 - **Block splitting** — oversized free blocks are sliced to avoid wasting memory
 - **Block merging** — adjacent free blocks are merged on `free_memory()` to reduce fragmentation
+- **Page deallocation** — shrinking the heap when pages are empty
 - **Mutex lock** — global mutex lock around all allocator operations
 
 ## API
@@ -26,7 +27,3 @@ ssize_t size_memory(void *addr);   // get size of allocation
 ```sh
 make
 ```
-
-## Status
-
-Work in progress. Page deallocation (shrinking the heap when pages are empty) is not yet implemented.

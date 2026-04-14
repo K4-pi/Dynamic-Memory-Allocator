@@ -8,7 +8,7 @@
 
 #include "memory_alloc.h"
 
-#define PAGE_SIZE 4096
+#define PAGE_SIZE 4096 
 
 typedef struct {
   size_t blocks_count;
@@ -135,7 +135,7 @@ static void *add_block(size_t size) {
 
   void *next_free = (char *)(last + 1) + last->size;
 
-  if ((size_t)(heap_end - next_free) < size + sizeof(block_header_t)) {
+  if ((long long)((char *)heap_end - (char *)next_free) < (long long)(size + sizeof(block_header_t))) {
     if (sbrk(PAGE_SIZE) == (void *)-1) {
       perror("Add page error");
       return (void *)-1;
@@ -175,11 +175,11 @@ static void slice_block(block_header_t *block, size_t size) {
   if (block->size - size > sizeof(block_header_t)) {  
    
     block_header_t *sliced_block = (block_header_t *)(((char *)(block + 1)) + size);
-   
-		block->size = size;
 
-    sliced_block->size = block->size - size - sizeof(block_header_t) * 2;
+    sliced_block->size = block->size - size - sizeof(block_header_t);
     sliced_block->is_free = true;
+
+		block->size = size;
 
     sliced_block->previous = block;
     sliced_block->next = block->next;
@@ -214,17 +214,36 @@ void free_memory(void *addr) {
   block_to_free->is_free = true;  
   
   merge_blocks(block_to_free);
-
-	// TODO: implement removing unused pages
   
-	// if (GET_HEAP_HEADER->pages_count > 1) {
-	// 	void *last_page = (char *)heap_start + (PAGE_SIZE * (GET_HEAP_HEADER->pages_count - 1));
-	//
-	// 	
-	//
-	// 	if ((void *)LAST_BLOCK < last_page)
-	//
-	// }
+	if (GET_HEAP_HEADER->pages_count > 1) {
+		
+		void *last_page = (char *)heap_start + (PAGE_SIZE * (GET_HEAP_HEADER->pages_count - 1));
+
+		size_t remove_count = 0;
+		bool page_is_free = true;
+		block_header_t *current_block = LAST_BLOCK;
+
+		while ((void *)current_block >= last_page) {
+			
+			if (!current_block->is_free) {
+					page_is_free = false;
+					break;
+			}
+			remove_count++;
+
+			current_block = current_block->previous;
+		}
+
+		if (page_is_free) {
+
+			FIRST_BLOCK->previous = current_block;
+			current_block->next = FIRST_BLOCK;
+			GET_HEAP_HEADER->blocks_count -= remove_count;
+			GET_HEAP_HEADER->pages_count--;
+			brk(last_page);
+			heap_end = last_page;
+		}
+	}
 
 	pthread_mutex_unlock(&heap_lock);
 }
@@ -273,32 +292,35 @@ static block_header_t *merge_blocks(block_header_t *block) {
  * +     TEMPORARY FOR DEBUG       +
  * =================================
  */
-// void is_free(void *addr) {
-//
-//   if (GET_BLOCK_AT_ADDRESS(addr)->is_free) printf("IS FREE\n");
-//   else printf("NOT FREE\n");
-// }
-//
-// void print_blocks() {
-//   block_header_t *current = FIRST_BLOCK;
-//
-//   for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
-//
-//     // Print active blocks
-//     printf("| previous -> %p | current -> %p | next ->  %p | IS_FREE = %d  BLOCK SIZE = %lu\n", 
-//             current->previous, current, current->next, current->is_free, current->size);
-//     
-//     current = (block_header_t *)current->next;
-//   }
-// }
-//
-// void heap_info() {
-//   printf("\nBlock header size = %lu\n\n", sizeof(block_header_t));
-//   printf("Heap start = %p\n", heap_start);
-//   printf("Heap end   = %p\n", heap_end);
-//   printf("Heap header size = %lu\n\n", sizeof(HEAP_HEADER));
-//   printf("first block = %p\n", FIRST_BLOCK);
-//   printf("last block = %p\n\n", LAST_BLOCK);
-//   printf("Blocks count = %lu\n", GET_HEAP_HEADER->blocks_count);
-//   printf("Pages count = %lu\n", GET_HEAP_HEADER->pages_count);
-// }
+
+/*
+void is_free(void *addr) {
+
+  if (GET_BLOCK_AT_ADDRESS(addr)->is_free) printf("IS FREE\n");
+  else printf("NOT FREE\n");
+}
+
+void print_blocks() {
+  block_header_t *current = FIRST_BLOCK;
+
+  for (size_t i = 0; i < GET_HEAP_HEADER->blocks_count; i++) {
+
+    // Print active blocks
+    printf("| previous -> %p | current -> %p | next ->  %p | IS_FREE = %d  BLOCK SIZE = %lu\n", 
+            current->previous, current, current->next, current->is_free, current->size);
+    
+    current = (block_header_t *)current->next;
+  }
+}
+
+void heap_info() {
+  printf("\nBlock header size = %lu\n\n", sizeof(block_header_t));
+  printf("Heap start = %p\n", heap_start);
+  printf("Heap end   = %p\n", heap_end);
+  printf("Heap header size = %lu\n\n", sizeof(HEAP_HEADER));
+  printf("first block = %p\n", FIRST_BLOCK);
+  printf("last block = %p\n\n", LAST_BLOCK);
+  printf("Blocks count = %lu\n", GET_HEAP_HEADER->blocks_count);
+  printf("Pages count = %lu\n", GET_HEAP_HEADER->pages_count);
+}
+*/
